@@ -17,6 +17,7 @@ package scsi
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/gostor/gotgt/pkg/api"
@@ -24,9 +25,9 @@ import (
 )
 
 // NewSCSILu: create a new SCSI LU
-// path format <protocol>:/absolute/file/path
+// path format <protocol>:/absolute/file/path:size
 func NewSCSILu(bs *config.BackendStorage) (*api.SCSILu, error) {
-	pathinfo := strings.SplitN(bs.Path, ":", 2)
+	pathinfo := strings.SplitN(bs.Path, ":", 3)
 	if len(pathinfo) < 2 {
 		return nil, errors.New("invalid device path string")
 	}
@@ -51,7 +52,16 @@ func NewSCSILu(bs *config.BackendStorage) (*api.SCSILu, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	lu.Size = backing.Size(lu)
+
+	if len(pathinfo) == 3 {
+		backendSize := pathinfo[2]
+		if u, err := strconv.ParseUint(backendSize, 10, 64); err == nil {
+			lu.Size = u
+		}
+	}
+
 	lu.DeviceProtocol.InitLu(lu)
 	lu.Attrs.ThinProvisioning = bs.ThinProvisioning
 	lu.Attrs.Online = bs.Online
