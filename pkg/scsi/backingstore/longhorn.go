@@ -18,7 +18,6 @@ package backingstore
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/gostor/gotgt/pkg/api"
 	"github.com/gostor/gotgt/pkg/scsi"
@@ -36,8 +35,7 @@ func init() {
 
 type LonghornBackingStore struct {
 	scsi.BaseBackingStore
-	io.ReaderAt
-	io.WriterAt
+	RemBs api.RemoteBackingStore
 }
 
 func newLonghorn() (api.BackingStore, error) {
@@ -51,13 +49,21 @@ func newLonghorn() (api.BackingStore, error) {
 }
 
 func (bs *LonghornBackingStore) Open(dev *api.SCSILu, path string) error {
+	log.Info("longhorn gotgt open")
 
+	var err error
 	bs.DataSize = 0 //uint64(finfo.Size())
+	bs.RemBs, err = scsi.GetTargetBSMap(path)
+	if err != nil {
+		log.Info("LonghornBackingStore Open get  Rembs err: ", err)
+		return err
+	}
 
 	return nil
 }
 
 func (bs *LonghornBackingStore) Close(dev *api.SCSILu) error {
+	log.Info("longhorn gotgt close")
 	return nil
 }
 
@@ -75,7 +81,7 @@ func (bs *LonghornBackingStore) Size(dev *api.SCSILu) uint64 {
 
 func (bs *LonghornBackingStore) Read(offset, tl int64) ([]byte, error) {
 	tmpbuf := make([]byte, tl)
-	length, err := bs.ReadAt(tmpbuf, offset)
+	length, err := bs.RemBs.ReadAt(tmpbuf, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +92,7 @@ func (bs *LonghornBackingStore) Read(offset, tl int64) ([]byte, error) {
 }
 
 func (bs *LonghornBackingStore) Write(wbuf []byte, offset int64) error {
-	length, err := bs.WriteAt(wbuf, offset)
+	length, err := bs.RemBs.WriteAt(wbuf, offset)
 	if err != nil {
 		log.Error(err)
 		return err
