@@ -155,11 +155,19 @@ func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) error 
 	if task == nil {
 		task = conn.rxTask
 	}
+
+	var req *ISCSICommand
+	if task != nil {
+		req = task.cmd
+	} else {
+		req = conn.req
+	}
+
 	conn.resp = &ISCSICommand{
-		StartTime:       conn.req.StartTime,
-		StatSN:          conn.req.ExpStatSN,
-		TaskTag:         conn.req.TaskTag,
-		ExpectedDataLen: conn.req.ExpectedDataLen,
+		StartTime:       req.StartTime,
+		StatSN:          req.ExpStatSN,
+		TaskTag:         req.TaskTag,
+		ExpectedDataLen: req.ExpectedDataLen,
 	}
 	if conn.session != nil {
 		conn.resp.ExpCmdSN = conn.session.ExpCmdSN
@@ -177,7 +185,7 @@ func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) error 
 		}
 	case OpSCSIIn, OpSCSIResp:
 		conn.resp.OpCode = oc
-		conn.resp.SCSIOpCode = conn.req.SCSIOpCode
+		conn.resp.SCSIOpCode = req.SCSIOpCode
 		conn.resp.Immediate = true
 		conn.resp.Final = true
 		conn.resp.SCSIResponse = 0x00
@@ -204,21 +212,21 @@ func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) error 
 		conn.resp.OpCode = oc
 		conn.resp.Final = true
 		conn.resp.NSG = FullFeaturePhase
-		conn.resp.ExpCmdSN = conn.req.CmdSN + 1
+		conn.resp.ExpCmdSN = req.CmdSN + 1
 	case OpSCSITaskResp:
 		conn.resp.OpCode = oc
 		conn.resp.Final = true
 		conn.resp.NSG = FullFeaturePhase
-		conn.resp.ExpCmdSN = conn.req.CmdSN + 1
+		conn.resp.ExpCmdSN = req.CmdSN + 1
 		conn.resp.Result = task.result
 	case OpLoginResp:
 		conn.resp.OpCode = OpLoginResp
 		conn.resp.Transit = conn.loginParam.tgtTrans
-		conn.resp.CSG = conn.req.CSG
+		conn.resp.CSG = req.CSG
 		conn.resp.NSG = conn.loginParam.tgtNSG
-		conn.resp.ExpCmdSN = conn.req.CmdSN
-		conn.resp.MaxCmdSN = conn.req.CmdSN
-		if conn.req.CSG != SecurityNegotiation {
+		conn.resp.ExpCmdSN = req.CmdSN
+		conn.resp.MaxCmdSN = req.CmdSN
+		if req.CSG != SecurityNegotiation {
 			negoKeys, err := conn.processLoginData()
 			if err != nil {
 				return err

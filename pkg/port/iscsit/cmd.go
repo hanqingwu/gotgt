@@ -199,6 +199,8 @@ func (m *ISCSICommand) String() string {
 		s = append(s, fmt.Sprintf("Read = %v", m.Read))
 		s = append(s, fmt.Sprintf("Write = %v", m.Write))
 		s = append(s, fmt.Sprintf("CDB = %x", m.CDB))
+		s = append(s, fmt.Sprintf("StatSN = %d", m.StatSN))
+		s = append(s, fmt.Sprintf("ExpCmdSN = %d", m.ExpCmdSN))
 	case OpSCSIResp:
 		s = append(s, fmt.Sprintf("StatSN = %d", m.StatSN))
 		s = append(s, fmt.Sprintf("ExpCmdSN = %d", m.ExpCmdSN))

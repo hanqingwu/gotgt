@@ -61,6 +61,8 @@ type ISCSITargetDriver struct {
 	OpCode            int
 	TargetStats       scsi.Stats
 	clusterIP         string
+	workChan          chan *iscsiTask
+	stopChan          chan bool
 }
 
 func init() {
@@ -76,10 +78,16 @@ func NewISCSITargetDriver(base *scsi.SCSITargetService) (scsi.SCSITargetDriver, 
 		mu:           &sync.RWMutex{},
 	}
 
+	driver.workChan = make(chan *iscsiTask, 64)
+	driver.stopChan = make(chan bool, 1)
+
 	if EnableStats {
 		driver.enableStats = true
 		driver.TargetStats.SCSIIOCount = map[int]int64{}
 	}
+
+	//	go driver.iscsiTaskQueueRoutine()
+
 	return driver, nil
 }
 
@@ -272,6 +280,7 @@ func (s *ISCSITargetDriver) handler(events byte, conn *iscsiConnection) {
 	}
 	if conn.state == CONN_STATE_CLOSE {
 		log.Warningf("iscsi connection[%d] closed", conn.cid)
+		//释放routine
 		conn.close()
 	}
 }
@@ -292,6 +301,7 @@ func (s *ISCSITargetDriver) rxHandler(conn *iscsiConnection) {
 		hdigest = conn.loginParam.sessionParam[ISCSI_PARAM_HDRDGST_EN].Value & DIGEST_CRC32C
 		ddigest = conn.loginParam.sessionParam[ISCSI_PARAM_DATADGST_EN].Value & DIGEST_CRC32C
 	}
+
 	for {
 		switch conn.rxIOState {
 		case IOSTATE_RX_BHS:
@@ -431,6 +441,7 @@ func (s *ISCSITargetDriver) iscsiExecLogin(conn *iscsiConnection) error {
 			return err
 		}
 		conn.loginParam.paramInit = true
+		go s.iscsiTaskQueueRoutine(conn)
 	}
 	if conn.loginParam.tgtNSG == FullFeaturePhase &&
 		conn.loginParam.tgtTrans {
@@ -730,21 +741,32 @@ func (s *ISCSITargetDriver) scsiCommandHandler(conn *iscsiConnection) (err error
 			}
 		}
 		task.offset = 0
-		conn.rxTask = task
-		if err = s.iscsiTaskQueueHandler(task); err != nil {
-			if task.state == taskPending {
-				s.handler(DATAIN, conn)
-				err = nil
+		//conn.rxTask = task
+
+		s.workChan <- task
+		log.Debug("send workchan")
+
+		conn.rxIOState = IOSTATE_RX_BHS
+		s.handler(DATAIN, conn)
+		return
+		/*
+				if err = s.iscsiTaskQueueHandler(task); err != nil {
+					if task.state == taskPending {
+						s.handler(DATAIN, conn)
+						err = nil
+					}
+					return
+				} else
+			*
+				if scmd.Direction == api.SCSIDataRead && scmd.SenseBuffer == nil && req.ExpectedDataLen != 0 {
+					conn.buildRespPackage(OpSCSIIn, task)
+				} else {
+					conn.buildRespPackage(OpSCSIResp, task)
+				}
+				conn.rxTask = nil
 			}
-			return
-		} else {
-			if scmd.Direction == api.SCSIDataRead && scmd.SenseBuffer == nil && req.ExpectedDataLen != 0 {
-				conn.buildRespPackage(OpSCSIIn, task)
-			} else {
-				conn.buildRespPackage(OpSCSIResp, task)
-			}
-			conn.rxTask = nil
-		}
+		*/
+
 	case OpSCSITaskReq:
 		// task management function
 		task := &iscsiTask{conn: conn, cmd: conn.req, tag: conn.req.TaskTag, scmd: nil}
@@ -817,6 +839,33 @@ func (s *ISCSITargetDriver) scsiCommandHandler(conn *iscsiConnection) (err error
 	return nil
 }
 
+func (s *ISCSITargetDriver) iscsiTaskQueueRoutine(conn *iscsiConnection) {
+
+	for {
+		select {
+		case task := <-s.workChan:
+			log.Debugf("go routine work task CmdSN %d, StatSN  ", task.cmd.CmdSN, task.cmd.StatSN)
+			err := s.iscsiTaskQueueHandler(task)
+			if err != nil {
+				break
+			}
+
+			scmd := task.scmd
+			if scmd.Direction == api.SCSIDataRead && scmd.SenseBuffer == nil && task.cmd.ExpectedDataLen != 0 {
+				//				if scmd.Direction == api.SCSIDataRead && scmd.SenseBuffer == nil && req.ExpectedDataLen != 0 {
+				conn.buildRespPackage(OpSCSIIn, task)
+			} else {
+				conn.buildRespPackage(OpSCSIResp, task)
+			}
+
+			log.Debugf("go routine tx CmdSN %d, StatSN  ", task.cmd.CmdSN, task.cmd.StatSN)
+			s.txHandler(conn)
+		case <-s.stopChan:
+			log.Debug("go routine exit ")
+			return
+		}
+	}
+}
 func (s *ISCSITargetDriver) iscsiTaskQueueHandler(task *iscsiTask) error {
 	conn := task.conn
 	sess := conn.session
@@ -825,7 +874,7 @@ func (s *ISCSITargetDriver) iscsiTaskQueueHandler(task *iscsiTask) error {
 		return s.iscsiExecTask(task)
 	}
 	cmdsn := cmd.CmdSN
-	log.Debugf("CmdSN of command is %d", cmdsn)
+	log.Debugf("CmdSN of command is = %d, sess.ExpCmdSN = %d ", cmdsn, sess.ExpCmdSN)
 	if cmdsn == sess.ExpCmdSN {
 	retry:
 		cmdsn += 1
