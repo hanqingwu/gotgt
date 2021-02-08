@@ -24,6 +24,8 @@ import (
 
 	"github.com/gostor/gotgt/pkg/api"
 	"github.com/gostor/gotgt/pkg/util"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -87,6 +89,7 @@ type iscsiConnection struct {
 	txTask *iscsiTask
 
 	readLock *sync.RWMutex
+    txWorkChan chan []byte
 }
 
 type taskState int
@@ -169,6 +172,8 @@ func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) (*ISCS
 		TaskTag:         req.TaskTag,
 		ExpectedDataLen: req.ExpectedDataLen,
 	}
+    log.Debugf("buildRespPackage TaskTag %x", resp.TaskTag)
+
 	if conn.session != nil {
 		resp.ExpCmdSN = conn.session.ExpCmdSN
 		resp.MaxCmdSN = conn.session.ExpCmdSN + conn.session.MaxQueueCommand

@@ -18,5 +18,5 @@
 package cmd
 
 import (
-	_ "github.com/gostor/gotgt/pkg/scsi/backingstore/cephstore"
+//	_ "github.com/gostor/gotgt/pkg/scsi/backingstore/cephstore"
 )
