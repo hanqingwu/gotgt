@@ -88,8 +88,8 @@ type iscsiConnection struct {
 	rxTask *iscsiTask
 	txTask *iscsiTask
 
-	readLock *sync.RWMutex
-    txWorkChan chan []byte
+	readLock   *sync.RWMutex
+	txWorkChan chan []byte
 }
 
 type taskState int
@@ -155,9 +155,6 @@ func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) (*ISCS
 	conn.txTask = &iscsiTask{conn: conn, cmd: conn.req, tag: conn.req.TaskTag, scmd: &api.SCSICommand{}}
 	conn.txIOState = IOSTATE_TX_BHS
 	conn.statSN += 1
-	if task == nil {
-		task = conn.rxTask
-	}
 
 	var req *ISCSICommand
 	if task != nil {
@@ -166,13 +163,18 @@ func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) (*ISCS
 		req = conn.req
 	}
 
+	/*
+		if task == nil {
+			task = conn.rxTask
+		}
+	*/
 	resp := &ISCSICommand{
 		StartTime:       req.StartTime,
 		StatSN:          req.ExpStatSN,
 		TaskTag:         req.TaskTag,
 		ExpectedDataLen: req.ExpectedDataLen,
 	}
-    log.Debugf("buildRespPackage TaskTag %x", resp.TaskTag)
+	log.Debugf("buildRespPackage TaskTag %x, oc %v ", resp.TaskTag, oc)
 
 	if conn.session != nil {
 		resp.ExpCmdSN = conn.session.ExpCmdSN
