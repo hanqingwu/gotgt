@@ -21,7 +21,6 @@ import (
 
 	"github.com/gostor/gotgt/pkg/api"
 	"github.com/gostor/gotgt/pkg/scsi"
-	//	"github.com/gostor/gotgt/pkg/util"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -49,7 +48,7 @@ func newLonghorn() (api.BackingStore, error) {
 }
 
 func (bs *LonghornBackingStore) Open(dev *api.SCSILu, path string) error {
-	log.Info("longhorn gotgt open")
+	log.Info("longhorn gotgt open path: ", path)
 
 	var err error
 	bs.DataSize = 0 //uint64(finfo.Size())
@@ -77,6 +76,18 @@ func (bs *LonghornBackingStore) Exit(dev *api.SCSILu) error {
 
 func (bs *LonghornBackingStore) Size(dev *api.SCSILu) uint64 {
 	return bs.DataSize
+}
+
+func (bs *LonghornBackingStore) ReadAt(buf []byte, offset int64) error {
+	length, err := bs.RemBs.ReadAt(buf, offset)
+	if err != nil {
+		return err
+	}
+
+	if length != len(buf) {
+		return fmt.Errorf("read is not same length of length")
+	}
+	return nil
 }
 
 func (bs *LonghornBackingStore) Read(offset, tl int64) ([]byte, error) {

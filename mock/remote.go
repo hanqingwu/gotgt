@@ -34,11 +34,11 @@ type remoteBs struct {
 	stats        scsi.Stats
 }
 
-func (r *remoteBs) ReadAt(data []byte, size int64) (int, error) {
+func (r *remoteBs) ReadAt(data []byte, offset int64) (int, error) {
 	return 0, nil
 }
 
-func (r *remoteBs) WriteAt(data []byte, size int64) (int, error) {
+func (r *remoteBs) WriteAt(data []byte, offset int64) (int, error) {
 	return 0, nil
 }
 

@@ -91,7 +91,7 @@ func createDaemon(host, driver, level string) error {
 	// comment this to avoid concurrent issue
 	// runtime.GOMAXPROCS(runtime.NumCPU())
 	// run a service
-	go targetDriver.Run()
+	go targetDriver.Run(3260)
 
 	serverConfig := &apiserver.Config{
 		Addrs: []apiserver.Addr{},

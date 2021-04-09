@@ -58,6 +58,9 @@ func (bs *NullBackingStore) Exit(dev *api.SCSILu) error {
 func (bs *NullBackingStore) Size(dev *api.SCSILu) uint64 {
 	return 0
 }
+func (bs *NullBackingStore) ReadAt(buf []byte, offset int64) error {
+	return nil
+}
 
 func (bs *NullBackingStore) Read(offset, tl int64) ([]byte, error) {
 	return nil, nil

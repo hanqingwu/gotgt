@@ -79,6 +79,22 @@ func (bs *FileBackingStore) Size(dev *api.SCSILu) uint64 {
 	return bs.DataSize
 }
 
+func (bs *FileBackingStore) ReadAt(buf []byte, offset int64) error {
+	if bs.file == nil {
+		return fmt.Errorf("Backend store is nil")
+	}
+
+	length, err := bs.file.ReadAt(buf, offset)
+	if err != nil {
+		return err
+	}
+	if length != len(buf) {
+		return fmt.Errorf("read is not same length of length")
+	}
+
+	return nil
+}
+
 func (bs *FileBackingStore) Read(offset, tl int64) ([]byte, error) {
 	if bs.file == nil {
 		return nil, fmt.Errorf("Backend store is nil")

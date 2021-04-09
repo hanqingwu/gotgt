@@ -52,6 +52,11 @@ var (
 	DATAOUT byte = 0x10
 )
 
+type SendPackage struct {
+	headBuf []byte
+	dataBuf []byte
+}
+
 type iscsiConnection struct {
 	ConnNum   int
 	state     int
@@ -59,14 +64,12 @@ type iscsiConnection struct {
 	session   *ISCSISession
 	tid       int
 	cid       uint16
-	rxIOState int
+	//rxIOState int
 	txIOState int
 	refcount  int
 	conn      net.Conn
 
-	rxBuffer []byte
-	txBuffer []byte
-	req      *ISCSICommand
+	req *ISCSICommand
 	//	resp     *ISCSICommand
 
 	loginParam *iscsiLoginParam
@@ -85,11 +88,18 @@ type iscsiConnection struct {
 	maxBurstLength           uint32
 	maxSeqCount              uint32
 
-	rxTask *iscsiTask
-	txTask *iscsiTask
 
-	readLock   *sync.RWMutex
-	txWorkChan chan []byte
+	readLock      *sync.RWMutex
+	txWorkChan    chan *SendPackage
+	txWorkBufChan chan []byte
+
+	bufPool    [bufNum][]byte
+	bufPoolMap map[uint32]bool
+	poolLock   sync.RWMutex
+
+	///txIoSeq uint32 //从iscsi发出的数据
+	//rxIoSeq        uint32 //发送给iscsi的数据段
+
 }
 
 type taskState int
@@ -151,8 +161,8 @@ func (conn *iscsiConnection) ReInstatement(newConn *iscsiConnection) {
 	conn.conn = newConn.conn
 }
 
-func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) (*ISCSICommand, error) {
-	conn.txTask = &iscsiTask{conn: conn, cmd: conn.req, tag: conn.req.TaskTag, scmd: &api.SCSICommand{}}
+func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask, cmd *ISCSICommand) (*ISCSICommand, error) {
+	//	conn.txTask = &iscsiTask{conn: conn, cmd: cmd, tag: conn.req.TaskTag, scmd: &api.SCSICommand{}}
 	conn.txIOState = IOSTATE_TX_BHS
 	conn.statSN += 1
 
@@ -160,7 +170,7 @@ func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) (*ISCS
 	if task != nil {
 		req = task.cmd
 	} else {
-		req = conn.req
+		req = cmd
 	}
 
 	/*
@@ -169,7 +179,7 @@ func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) (*ISCS
 		}
 	*/
 	resp := &ISCSICommand{
-		StartTime:       req.StartTime,
+		//StartTime:       req.StartTime,
 		StatSN:          req.ExpStatSN,
 		TaskTag:         req.TaskTag,
 		ExpectedDataLen: req.ExpectedDataLen,
@@ -202,6 +212,10 @@ func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) (*ISCS
 		if scmd.Result != 0 && scmd.SenseBuffer != nil {
 			length := util.MarshalUint32(scmd.SenseBuffer.Length)
 			resp.RawData = append(length[2:4], scmd.SenseBuffer.Buffer...)
+			if scmd.InSDBBuffer != nil {
+				freeBufPool(conn, scmd.InSDBBuffer.Buffer)
+
+			}
 		} else if scmd.Direction == api.SCSIDataRead || scmd.Direction == api.SCSIDataWrite {
 			if scmd.InSDBBuffer != nil {
 				resp.Resid = scmd.InSDBBuffer.Resid
@@ -234,7 +248,7 @@ func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) (*ISCS
 		resp.ExpCmdSN = req.CmdSN
 		resp.MaxCmdSN = req.CmdSN
 		if req.CSG != SecurityNegotiation {
-			negoKeys, err := conn.processLoginData()
+			negoKeys, err := conn.processLoginData(cmd)
 			if err != nil {
 				return nil, err
 			}
@@ -244,7 +258,7 @@ func (conn *iscsiConnection) buildRespPackage(oc OpCode, task *iscsiTask) (*ISCS
 			}
 			resp.RawData = util.MarshalKVText(negoKeys)
 		}
-		conn.txTask = nil
+		//		conn.txTask = nil
 	}
 
 	return resp, nil
